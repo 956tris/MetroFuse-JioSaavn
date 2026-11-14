@@ -1,16 +1,16 @@
 # MetroFuse JioSaavn plugin
 
-JioSaavn is an optional plugin for [MetroFuse KMP](https://github.com/956tris/MetroFuse/tree/KMP). This separate public repository contains its JavaScript and Kotlin implementations, build tools and desktop JAR, Android APK and universal MFP downloads.
+JioSaavn is an optional plugin for [MetroFuse KMP](https://github.com/956tris/MetroFuse/tree/KMP). This separate public repository contains its JavaScript and Kotlin source and build tools. Download the desktop JAR, Android APK and universal MFP from [GitHub Releases](https://github.com/956tris/MetroFuse-JioSaavn/releases/tag/v1.2.0).
 
 Version 1.2.0 uses plugin API 1.1.0. It supplies Home shelves, search, metadata, album/artist/playlist lookup, audio resolution and persisted settings. It has no login capability. All formats use owner ID `metrofuse.jiosaavn`; install one implementation at a time.
 
 | Platform | Package |
 | --- | --- |
-| Desktop | [jiosaavn.jar](artifacts/jiosaavn.jar) |
-| Android host | [jiosaavn.apk](artifacts/jiosaavn.apk) |
-| Desktop or Android | [jiosaavn.mfp](artifacts/jiosaavn.mfp) |
+| Desktop | [jiosaavn.jar](https://github.com/956tris/MetroFuse-JioSaavn/releases/download/v1.2.0/jiosaavn.jar) |
+| Android host | [jiosaavn.apk](https://github.com/956tris/MetroFuse-JioSaavn/releases/download/v1.2.0/jiosaavn.apk) |
+| Desktop or Android | [jiosaavn.mfp](https://github.com/956tris/MetroFuse-JioSaavn/releases/download/v1.2.0/jiosaavn.mfp) |
 
-Compare the downloaded file against [SHA256SUMS](artifacts/SHA256SUMS). Open MetroFuse → Plugins or Settings → Plugins, import the package, then enable it. The APK is a plugin code container; import it inside MetroFuse rather than installing it as a separate Android application. Replacing formats retains that owner's settings.
+Compare the downloaded file against [SHA256SUMS](https://github.com/956tris/MetroFuse-JioSaavn/releases/download/v1.2.0/SHA256SUMS). Open MetroFuse → Plugins or Settings → Plugins, import the package, then enable it. The APK is a plugin code container; import it inside MetroFuse rather than installing it as a separate Android application. Replacing formats retains that owner's settings.
 
 `regionalCatalog` selects the India catalog by default. `previewEnabled` permits public previews when a full stream is unavailable. Catalog and audio availability depend on JioSaavn's responses and region. The plugin supplies no ambient host account session or DRM support.
 
@@ -34,7 +34,7 @@ Adjust the API JAR path to your host checkout. On Linux/macOS use `./gradlew`. O
 
 ## Verify and distribute
 
-Run `python tooling/verify.py` to check distributed archive structure, manifests, MFP hashes and SHA256SUMS. Native regression tests cover catalog, media and partial-search behavior without service requests. Test the actual package in MetroFuse on every platform you claim. APK compilation does not establish Android device playback. JioSaavn has no credential form to test.
+After building all three formats, run `python tooling/verify.py --check-source --write-checksums` to check archive structure, manifests and MFP hashes and create `build/plugin-examples/SHA256SUMS`. To verify downloaded release files, put all four files in one folder and run `python tooling/verify.py --directory <download-folder>`. Keep compiled files out of Git and upload them to a versioned GitHub release. Native regression tests cover catalog, media and partial-search behavior without service requests. Test the actual package in MetroFuse on every platform you claim. APK compilation does not establish Android device playback. JioSaavn has no credential form to test.
 
 See the separate [plugin authoring guide](https://github.com/956tris/MetroFuse-Plugin-Docs) for core Home/login contracts, ownership, lifecycle and troubleshooting. Neither the app nor the documentation installs this plugin automatically.
 
