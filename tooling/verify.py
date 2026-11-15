@@ -19,9 +19,9 @@ for extension in ['jar', 'apk', 'mfp']:
         assert all(chr(92) not in name for name in archive.namelist()), 'Non-portable ZIP paths'
         manifest_path = 'assets/metrofuse/manifest.json' if extension == 'apk' else 'manifest.json'
         manifest = json.loads(archive.read(manifest_path))
-        assert manifest['id'] == 'metrofuse.jiosaavn' and manifest['version'] == '1.2.0'
+        assert manifest['id'] == 'metrofuse.jiosaavn' and manifest['version'] == '1.3.0'
         assert manifest['api'] == '1.1.0' and 'home' in manifest['capabilities']
-        assert 'login' not in manifest['capabilities']
+        assert {'search', 'catalog'} <= set(manifest['capabilities'])
         if extension == 'mfp':
             assert manifest['runtime'] == 'javascript'
             assert manifest['script'] in archive.namelist()

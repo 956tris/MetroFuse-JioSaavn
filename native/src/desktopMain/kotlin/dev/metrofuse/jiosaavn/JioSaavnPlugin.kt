@@ -8,6 +8,7 @@ import dev.metrofuse.api.AudioSource
 import dev.metrofuse.api.CatalogProvider
 import dev.metrofuse.api.HomePlugin
 import dev.metrofuse.api.HomeRequest
+import dev.metrofuse.api.HomeShelf
 import dev.metrofuse.api.HttpRequest
 import dev.metrofuse.api.MetadataContribution
 import dev.metrofuse.api.MetadataRequest
@@ -26,6 +27,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -36,9 +38,7 @@ class JioSaavnPlugin :
     NativePlugin,
     HomePlugin {
     private var api: JioApi? = null
-
-    override suspend fun getHome(request: HomeRequest) =
-        JioHome.shelves(checkNotNull(api).call("webapi.getLaunchData", mapOf("hl" to request.language, "gl" to request.country)))
+    override suspend fun getHome(request: HomeRequest) = checkNotNull(api).discover(request)
 
     override suspend fun start(context: PluginContext) {
         val api = JioApi(context.network, context.settings)
@@ -55,6 +55,15 @@ class JioSaavnPlugin :
     }
 }
 
+internal suspend fun <T> available(block: suspend () -> T): Result<T> =
+    try {
+        Result.success(block())
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
+
 internal class JioApi(
     private val network: PluginNetwork,
     private val settings: PluginSettings,
@@ -68,16 +77,45 @@ internal class JioApi(
         call: String,
         parameters: Map<String, String>,
         regionalCatalog: Boolean = enabled("regionalCatalog"),
+        version: String? = "4",
+        language: String? = null,
+        timeoutMs: Long = 6500,
     ): JsonObject {
-        val query = mapOf("__call" to call, "_format" to "json", "_marker" to "0", "api_version" to "4", "ctx" to "web6dot0") + parameters
+        val query = buildMap {
+            putAll(mapOf("__call" to call, "_format" to "json", "_marker" to "0", "ctx" to "web6dot0"))
+            version?.let { put("api_version", it) }
+            putAll(parameters)
+        }
         val url =
             "https://www.jiosaavn.com/api.php?" + query.entries.joinToString("&") { (key, value) -> "${encode(key)}=${encode(value)}" }
-        val headers =
-            mapOf("Accept" to "application/json", "Referer" to "https://www.jiosaavn.com/") +
-                if (regionalCatalog) mapOf("X-Forwarded-For" to routingIp, "X-Real-IP" to routingIp) else emptyMap()
-        val response = network.request(HttpRequest(url, headers = headers, maxBytes = 1048576, timeoutMs = 10000))
+        val headers = buildMap {
+            put("Accept", "application/json")
+            put("Referer", "https://www.jiosaavn.com/")
+            put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            if (regionalCatalog) {
+                put("X-Forwarded-For", routingIp)
+                put("X-Real-IP", routingIp)
+            }
+            language?.let { put("Cookie", "L=$it") }
+        }
+        val response = network.request(HttpRequest(url, headers = headers, timeoutMs = timeoutMs))
         check(response.status == 200) { "JioSaavn HTTP ${response.status}" }
-        return Json.parseToJsonElement(response.body) as? JsonObject ?: error("JioSaavn response must be an object")
+        return when (val data = Json.parseToJsonElement(response.body)) {
+            is JsonObject -> data
+            is JsonArray -> JsonObject(mapOf("results" to data))
+            else -> error("Invalid JioSaavn response")
+        }
+    }
+
+    suspend fun discover(request: HomeRequest): List<HomeShelf> {
+        val language = JioHome.language(request.language)
+        val launch = available {
+            JioHome.shelves(call("webapi.getLaunchData", mapOf("hl" to request.language, "gl" to request.country), language = language))
+        }
+        launch.getOrNull()?.takeIf { it.isNotEmpty() }?.let { return it }
+        val trending = call("content.getTrending", mapOf("entity_type" to "song", "entity_language" to language.substringBefore(',')))
+        val items = trending["results"].objects().mapNotNull { JioHome.item(it, "song") }.take(30)
+        return listOfNotNull(JioHome.shelf("Trending songs", items)).ifEmpty { error("JioSaavn returned no Home shelves") }
     }
 
     suspend fun song(identity: TrackIdentity): JsonObject? {
@@ -86,7 +124,7 @@ internal class JioApi(
         val key = "$regionalCatalog:$id"
         synchronized(cache) { cache[key]?.takeIf { it.first > System.currentTimeMillis() }?.let { return it.second } }
         val song =
-            call("song.getDetails", mapOf("pids" to id), regionalCatalog)["songs"]
+            call("song.getDetails", mapOf("pids" to id), regionalCatalog, timeoutMs = 10000)["songs"]
                 .objects()
                 .firstOrNull { it.text("id") == id && JioCatalog.song(it) != null } ?: return null
         synchronized(cache) {
@@ -108,28 +146,33 @@ internal class JioSearch(
 
     override suspend fun search(request: SearchRequest): SearchResult =
         coroutineScope {
-            if (request.query.isBlank()) return@coroutineScope SearchResult(emptyList())
-            val parameters = mapOf("q" to request.query, "n" to request.limit.coerceIn(1, 30).toString(), "p" to "1")
+            val query = request.query.trim()
+            if (query.isEmpty()) return@coroutineScope SearchResult(emptyList())
+            val limit = request.limit.coerceIn(1, 30)
+            val parameters = mapOf("q" to query, "n" to limit.toString(), "p" to "1")
             val responses =
                 listOf("search.getResults", "search.getAlbumResults", "search.getArtistResults", "search.getPlaylistResults")
                     .map { call ->
-                        async {
-                            try {
-                                Result.success(api.call(call, parameters))
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch (e: Exception) {
-                                Result.failure(e)
-                            }
-                        }
+                        async { available { api.call(call, parameters) } }
                     }.map { it.await() }
-            if (responses.all { it.isFailure }) throw requireNotNull(responses.first().exceptionOrNull())
-            val values = responses.map { it.getOrNull()?.get("results").objects() }
+            val types = listOf("song", "album", "artist", "playlist")
+            val results = types.zip(responses).map { (type, response) ->
+                response.getOrNull()?.get("results").objects().mapNotNull { JioHome.item(it, type) }
+            }
+            val fallback = if (results[0].isEmpty() || responses.any { it.isFailure }) {
+                val quick = available { api.call("autocomplete.get", mapOf("query" to query), version = null) }
+                if (responses.all { it.isFailure }) quick.getOrThrow() else quick.getOrNull()
+            } else {
+                null
+            }
+            val values = types.zip(results).map { (type, items) ->
+                items.ifEmpty { fallback?.obj("${type}s")?.get("data").objects().mapNotNull { JioHome.item(it, type) } }.distinct().take(limit)
+            }
             SearchResult(
-                tracks = values[0].mapNotNull(JioCatalog::song),
-                albums = values[1].mapNotNull { JioCatalog.album(it, "") }.filter { it.id.isNotEmpty() },
-                artists = values[2].mapNotNull { JioCatalog.artist(it, "") }.filter { it.id.isNotEmpty() },
-                playlists = values[3].mapNotNull { JioCatalog.playlist(it, "") }.filter { it.id.isNotEmpty() },
+                tracks = values[0].mapNotNull { it.track },
+                albums = values[1].mapNotNull { it.album },
+                artists = values[2].mapNotNull { it.artist },
+                playlists = values[3].mapNotNull { it.playlist },
             )
         }
 }
@@ -148,7 +191,7 @@ internal class JioBrowse(
                 mapOf(
                     "artistId" to id,
                     "n_song" to "25",
-                    "n_album" to "0",
+                    "n_album" to "20",
                 ),
             ),
             id,

@@ -40,7 +40,7 @@ internal object JioCatalog {
             value.text("primary_artists")?.split(',') ?: more.obj("artistMap")["primary_artists"].objects().mapNotNull { it.text("name") }
         val artist =
             if (names.isEmpty()) {
-                decode(more.text("music"))
+                decode(more.text("music") ?: value.text("subtitle") ?: value.text("description"))
             } else {
                 names
                     .map {
@@ -74,7 +74,7 @@ internal object JioCatalog {
         return CatalogAlbum(
             value.text("albumid") ?: value.text("id") ?: id,
             decode(title),
-            decode(value.text("subtitle") ?: value.obj("more_info").text("music") ?: tracks.firstOrNull()?.artist),
+            decode(value.text("subtitle") ?: value.obj("more_info").text("music") ?: value.text("description") ?: tracks.firstOrNull()?.artist),
             value.text("image").orEmpty(),
             tracks,
         )
@@ -86,7 +86,14 @@ internal object JioCatalog {
     ): CatalogArtist? {
         val name = value.text("name") ?: value.text("title") ?: return null
         val songs = value["topSongs"] as? JsonArray ?: value.obj("topSongs")["songs"]
-        return CatalogArtist(value.text("artistId") ?: value.text("id") ?: id, decode(name), value.text("image").orEmpty(), songs(songs))
+        val albums = value["topAlbums"] as? JsonArray ?: value.obj("topAlbums")["albums"]
+        return CatalogArtist(
+            value.text("artistId") ?: value.text("id") ?: id,
+            decode(name),
+            value.text("image").orEmpty(),
+            songs(songs),
+            albums.objects().mapNotNull { album(it, "") }.filter { it.id.isNotBlank() },
+        )
     }
 
     fun playlist(
@@ -97,9 +104,9 @@ internal object JioCatalog {
         return CatalogPlaylist(
             value.text("listid") ?: value.text("id") ?: id,
             decode(title),
-            decode(value.text("firstname") ?: value.obj("more_info").text("firstname") ?: value.text("subtitle")),
+            decode(value.text("firstname") ?: value.obj("more_info").text("firstname") ?: value.text("subtitle") ?: value.text("description")),
             value.text("image").orEmpty(),
-            songs(value["list"]),
+            songs(value["songs"] as? JsonArray ?: value["list"]),
         )
     }
 }

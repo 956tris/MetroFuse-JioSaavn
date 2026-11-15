@@ -23,9 +23,11 @@ export function parseSong(song) {
   const title = decodeHtml(song.title ?? song.song);
   if (!/^[A-Za-z0-9_-]{1,80}$/.test(id) || !title.trim()) return null;
   const more = song.more_info ?? {};
+  const primaryArtists = more.artistMap?.primary_artists;
   const names = typeof song.primary_artists === 'string' ? song.primary_artists.split(',') :
-    (more.artistMap?.primary_artists ?? []).map(artist => artist.name);
-  const artist = names.length ? names.map(decodeHtml).map(name => name.trim()).filter(Boolean).join(', ') : decodeHtml(more.music);
+    (Array.isArray(primaryArtists) ? primaryArtists.map(artist => artist?.name) : []);
+  const artist = names.map(decodeHtml).map(name => name.trim()).filter(Boolean).join(', ') ||
+    decodeHtml(more.music ?? song.subtitle ?? song.description);
   const duration = Number(song.duration ?? more.duration);
   const albumId = String(song.albumid ?? more.album_id ?? '');
   return {
@@ -44,18 +46,20 @@ export function parseSongs(songs) { return (Array.isArray(songs) ? songs : []).m
 export function parseAlbum(data, id) {
   if (!data || !(data.title || data.name)) return null;
   const tracks = parseSongs(Array.isArray(data.songs) ? data.songs : data.list);
-  return {id:String(data.albumid ?? data.id ?? id),title:decodeHtml(data.title ?? data.name),artist:decodeHtml(data.subtitle ?? data.more_info?.music ?? tracks[0]?.artist),artwork:String(data.image ?? ''),tracks};
+  return {id:String(data.albumid ?? data.id ?? id),title:decodeHtml(data.title ?? data.name),artist:decodeHtml(data.subtitle ?? data.more_info?.music ?? data.description ?? tracks[0]?.artist),artwork:String(data.image ?? ''),tracks};
 }
 
 export function parseArtist(data, id) {
   if (!data || !(data.name || data.title)) return null;
   const songs = Array.isArray(data.topSongs) ? data.topSongs : data.topSongs?.songs;
-  return {id:String(data.artistId ?? data.id ?? id),name:decodeHtml(data.name ?? data.title),artwork:String(data.image ?? ''),tracks:parseSongs(songs),albums:[]};
+  const albums = Array.isArray(data.topAlbums) ? data.topAlbums : data.topAlbums?.albums;
+  return {id:String(data.artistId ?? data.id ?? id),name:decodeHtml(data.name ?? data.title),artwork:String(data.image ?? ''),tracks:parseSongs(songs),
+    albums:(Array.isArray(albums) ? albums : []).map(item => parseAlbum(item, '')).filter(item => item?.id)};
 }
 
 export function parsePlaylist(data, id) {
   if (!data || !(data.listname || data.title)) return null;
-  return {id:String(data.listid ?? data.id ?? id),title:decodeHtml(data.listname ?? data.title),author:decodeHtml(data.firstname ?? data.more_info?.firstname ?? data.subtitle),artwork:String(data.image ?? ''),tracks:parseSongs(data.list)};
+  return {id:String(data.listid ?? data.id ?? id),title:decodeHtml(data.listname ?? data.title),author:decodeHtml(data.firstname ?? data.more_info?.firstname ?? data.subtitle ?? data.description),artwork:String(data.image ?? ''),tracks:parseSongs(Array.isArray(data.songs) ? data.songs : data.list)};
 }
 
 export function previewStream(song, enabled = true) {

@@ -2,6 +2,7 @@ package dev.metrofuse.jiosaavn
 
 import dev.metrofuse.api.AudioQuery
 import dev.metrofuse.api.HomeLayout
+import dev.metrofuse.api.HomeRequest
 import dev.metrofuse.api.HttpRequest
 import dev.metrofuse.api.HttpResponse
 import dev.metrofuse.api.MetadataDocument
@@ -23,6 +24,7 @@ import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -34,7 +36,7 @@ class JioSaavnTest {
             Json.parseToJsonElement(
                 """
             {"modules":{"songs":{"source":"songs","title":"Tracks &amp; more","position":2},
-              "mixed":{"source":"mixed","title":"Albums","position":1}},
+              "mixed":{"title":"Albums","position":1}},
               "songs":[{"id":"song_1","type":"song","title":"Song"}],
               "mixed":[{"id":"album_1","type":"album","title":"Album"},{"id":"radio_1","type":"radio","title":"Unsupported"}]}
         """,
@@ -235,5 +237,27 @@ class JioSaavnTest {
                     .single()
                     .title,
             )
+        }
+
+    @Test
+    fun discoveryAndSearchFallBackToSupportedServiceResponseShapes() =
+        runTest {
+            val network = object : PluginNetwork {
+                override suspend fun request(request: HttpRequest): HttpResponse = when {
+                    "webapi.getLaunchData" in request.url -> {
+                        assertEquals("L=english", request.headers["Cookie"])
+                        HttpResponse(200, emptyMap(), "{}")
+                    }
+                    "content.getTrending" in request.url -> HttpResponse(200, emptyMap(), """[${song()}]""")
+                    "autocomplete.get" in request.url -> {
+                        assertFalse("api_version" in request.url)
+                        HttpResponse(200, emptyMap(), """{"songs":{"data":[${song()}]}}""")
+                    }
+                    else -> HttpResponse(503, emptyMap(), "")
+                }
+            }
+            val api = JioApi(network, Settings())
+            assertEquals("Trending songs", api.discover(HomeRequest("en-GB", "GB")).single().title)
+            assertEquals("No Idea", JioSearch(api).search(SearchRequest("test")).tracks.single().title)
         }
 }
