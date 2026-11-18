@@ -1,6 +1,6 @@
 # MetroFuse JioSaavn plugin
 
-JioSaavn is an optional plugin for [MetroFuse KMP](https://github.com/956tris/MetroFuse/tree/KMP). This repository contains its JavaScript and Kotlin source and build tools. Published desktop JAR, Android APK and universal MFP packages are available on [GitHub Releases](https://github.com/956tris/MetroFuse-JioSaavn/releases).
+JioSaavn is an optional plugin for [MetroFuse KMP](https://github.com/956tris/MetroFuse). This repository contains its JavaScript and Kotlin source and build tools. Published desktop JAR, Android APK and universal MFP packages are available on [GitHub Releases](https://github.com/956tris/MetroFuse-JioSaavn/releases).
 
 Version 1.3.0 adds language-aware Home shelves, a trending fallback, autocomplete fallback for song/album/artist/playlist search, and albums on artist pages. All formats use owner ID `metrofuse.jiosaavn`. Install one implementation at a time.
 
@@ -10,7 +10,7 @@ Version 1.3.0 adds language-aware Home shelves, a trending fallback, autocomplet
 | Android host | `jiosaavn.apk` |
 | Desktop or Android | `jiosaavn.mfp` |
 
-Compare the downloaded file against `SHA256SUMS` from the same release. Open MetroFuse's Plugins page, import the package, and enable it. Import the APK through MetroFuse's plugin manager. Replacing formats retains the plugin's settings.
+Compare the downloaded file against `SHA256SUMS` from the same release. Open MetroFuse's Plugins page, import the package, and enable it. Plugin APKs must be imported through MetroFuse's plugin manager, not installed with Android's package installer. Update the MetroFuse host to KMP Beta first, then import one package for this provider and enable it. Replacing formats retains the plugin's settings. Back up your library and settings before migrating; the beta may crash, lose migration data or have incomplete features, and native plugins require the matching API and Compose ABI.
 
 `regionalCatalog` selects the India catalog by default. `previewEnabled` permits public previews when a full stream is unavailable. Catalog and audio availability depend on JioSaavn's responses and region.
 
@@ -22,7 +22,7 @@ From this repository, run the [PowerShell packer](tooling/pack-mfp.ps1) with `-S
 
 Install Java 25. Match Kotlin 2.4.21, Compose 1.13.0-beta02 and plugin API 1.1.0. Android packaging also needs SDK platform `android-37.0` and build tools `37.0.0`; configure `ANDROID_HOME` or untracked `local.properties`.
 
-The host does not currently publish a Maven SDK. Obtain its API JAR by running `:plugin-api:desktopJar` in a separate [MetroFuse KMP checkout](https://github.com/956tris/MetroFuse/tree/KMP). The result is `plugin-api/build/libs/plugin-api-desktop-1.1.0.jar`. Keep the host checkout separate from this plugin repository.
+The host does not currently publish a Maven SDK. Obtain its API JAR by running `:plugin-api:desktopJar` in a separate [MetroFuse KMP checkout](https://github.com/956tris/MetroFuse). The result is `plugin-api/build/libs/plugin-api-desktop-1.1.0.jar`. Keep the host checkout separate from this plugin repository.
 
 In this plugin repository, run:
 
